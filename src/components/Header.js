@@ -1,5 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
+import { useLanguage } from '../context/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 const HeaderContainer = styled.header`
   background: linear-gradient(135deg, #e10600 0%, #ff1e1e 100%);
@@ -41,6 +43,17 @@ const Subtitle = styled.p`
   font-weight: 300;
 `;
 
+const ControlsContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 15px;
+  }
+`;
+
 const YearSelector = styled.div`
   display: flex;
   align-items: center;
@@ -75,30 +88,58 @@ const YearSelect = styled.select`
   }
 `;
 
+const LanguageToggle = styled.button`
+  padding: 10px 15px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+  }
+  
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+  }
+`;
+
 const Header = ({ selectedYear, onYearChange }) => {
+  const { language, toggleLanguage } = useLanguage();
   const years = [2025, 2024, 2023, 2022, 2021, 2020];
 
   return (
     <HeaderContainer>
       <HeaderContent>
         <div>
-          <Title>🏎️ F1 Driver Statistics</Title>
+          <Title> {getTranslation('title', language)}</Title>
           <Subtitle>Comprehensive Formula 1 Driver Performance Dashboard</Subtitle>
         </div>
-        <YearSelector>
-          <YearLabel htmlFor="year-select">Season:</YearLabel>
-          <YearSelect
-            id="year-select"
-            value={selectedYear}
-            onChange={(e) => onYearChange(parseInt(e.target.value))}
-          >
-            {years.map(year => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </YearSelect>
-        </YearSelector>
+        <ControlsContainer>
+          <YearSelector>
+            <YearLabel htmlFor="year-select">{getTranslation('selectYear', language)}:</YearLabel>
+            <YearSelect
+              id="year-select"
+              value={selectedYear}
+              onChange={(e) => onYearChange(parseInt(e.target.value))}
+            >
+              {years.map(year => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </YearSelect>
+          </YearSelector>
+          <LanguageToggle onClick={toggleLanguage}>
+            {language === 'en' ? '🇫🇷 FR' : '🇺🇸 EN'}
+          </LanguageToggle>
+        </ControlsContainer>
       </HeaderContent>
     </HeaderContainer>
   );

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { getTranslation } from './utils/translations';
 import Header from './components/Header';
 import DriverStats from './components/DriverStats';
 import DriverComparison from './components/DriverComparison';
+import DriverScatterPlot from './components/DriverScatterPlot';
 import SeasonOverview from './components/SeasonOverview';
+import RaceEvolutionGraph from './components/RaceEvolutionGraph';
 import { fetchDriverData } from './services/api';
 
 const AppContainer = styled.div`
@@ -42,7 +46,8 @@ const ErrorContainer = styled.div`
   padding: 20px;
 `;
 
-function App() {
+const AppContent = () => {
+  const { language } = useLanguage();
   const [driverData, setDriverData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -56,7 +61,7 @@ function App() {
         const data = await fetchDriverData(selectedYear);
         setDriverData(data);
       } catch (err) {
-        setError('Failed to load driver data. Please try again later.');
+        setError(getTranslation('failedToLoad', language));
         console.error('Error loading data:', err);
       } finally {
         setLoading(false);
@@ -64,14 +69,14 @@ function App() {
     };
 
     loadData();
-  }, [selectedYear]);
+  }, [selectedYear, language]);
 
   if (loading) {
     return (
       <AppContainer>
         <Header selectedYear={selectedYear} onYearChange={setSelectedYear} />
         <LoadingContainer>
-          Loading F1 driver statistics...
+          {getTranslation('loading', language)}
         </LoadingContainer>
       </AppContainer>
     );
@@ -83,7 +88,7 @@ function App() {
         <Header selectedYear={selectedYear} onYearChange={setSelectedYear} />
         <ErrorContainer>
           <div>
-            <h2>Error</h2>
+            <h2>{getTranslation('error', language)}</h2>
             <p>{error}</p>
             <button 
               onClick={() => window.location.reload()}
@@ -97,7 +102,7 @@ function App() {
                 cursor: 'pointer'
               }}
             >
-              Retry
+              {getTranslation('retry', language)}
             </button>
           </div>
         </ErrorContainer>
@@ -112,8 +117,17 @@ function App() {
         <DriverStats drivers={driverData} />
         <DriverComparison drivers={driverData} />
       </DashboardGrid>
-      <SeasonOverview drivers={driverData} year={selectedYear} />
+      <DriverScatterPlot drivers={driverData} />
+      <RaceEvolutionGraph />
     </AppContainer>
+  );
+};
+
+function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 

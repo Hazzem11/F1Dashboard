@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useLanguage } from '../context/LanguageContext';
+import { getTranslation } from '../utils/translations';
 
 const ComparisonContainer = styled.div`
   background: rgba(255, 255, 255, 0.05);
@@ -18,14 +20,21 @@ const Title = styled.h2`
   font-weight: 600;
 `;
 
-const DriverSelector = styled.div`
+const ControlsContainer = styled.div`
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 15px;
   margin-bottom: 20px;
+`;
+
+const ControlRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 15px;
   flex-wrap: wrap;
 `;
 
-const DriverButton = styled.button`
+const ToggleButton = styled.button`
   padding: 8px 16px;
   border: 1px solid ${props => props.selected ? '#e10600' : 'rgba(255, 255, 255, 0.2)'};
   background: ${props => props.selected ? 'rgba(225, 6, 0, 0.2)' : 'rgba(255, 255, 255, 0.05)'};
@@ -41,50 +50,34 @@ const DriverButton = styled.button`
   }
 `;
 
-const ChartContainer = styled.div`
-  height: 400px;
-  margin-bottom: 20px;
-`;
-
-const ComparisonTable = styled.div`
+const RaceSelector = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
-  padding: 15px;
-  margin-top: 20px;
-`;
-
-const TableHeader = styled.div`
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
-  gap: 10px;
-  padding: 10px;
-  background: rgba(225, 6, 0, 0.1);
   border-radius: 8px;
-  margin-bottom: 10px;
-  font-weight: 600;
-  color: #e10600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const TableRow = styled.div`
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
-  gap: 10px;
-  padding: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+const RaceCheckbox = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.8rem;
+  cursor: pointer;
   
-  &:last-child {
-    border-bottom: none;
-  }
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.05);
+  input {
+    accent-color: #e10600;
   }
 `;
 
-const TableCell = styled.div`
-  color: ${props => props.highlight ? '#e10600' : 'rgba(255, 255, 255, 0.9)'};
-  font-weight: ${props => props.highlight ? '600' : '400'};
-  font-size: 0.9rem;
+const ChartContainer = styled.div`
+  height: 500px;
+  margin-bottom: 20px;
 `;
 
 const NoDataMessage = styled.div`
@@ -94,170 +87,217 @@ const NoDataMessage = styled.div`
   font-style: italic;
 `;
 
+// Team color mapping
+const TEAM_COLORS = {
+  'Red Bull Racing': '#3671C6',
+  'Red Bull': '#3671C6',
+  'McLaren': '#FF8700',
+  'Ferrari': '#DC0000',
+  'Mercedes': '#6CD3BF',
+  'Aston Martin': '#358C75',
+  'Haas': '#888888',
+  'Racing Bulls': '#FFFFFF',
+  'Williams': '#37BEDD',
+  'Sauber': '#52E252',
+  'Kick Sauber': '#52E252',
+  'Alpine': '#0090FF'
+};
+
+const calculateTotalPoints = (racePoints, selectedRaces) => {
+  return racePoints.reduce((total, points, index) => {
+    if (selectedRaces.includes(index + 1)) {
+      return total + points;
+    }
+    return total;
+  }, 0);
+};
+
+const buildDriverChartData = (drivers, selectedRaces) => {
+  return drivers.map(driver => ({
+    name: driver.name,
+    points: calculateTotalPoints(driver.racePoints, selectedRaces),
+    team: driver.team,
+    fill: TEAM_COLORS[driver.team] || '#e10600'
+  })).sort((a, b) => b.points - a.points);
+};
+
+const buildTeamChartData = (drivers, selectedRaces) => {
+  const teamPoints = {};
+  
+  drivers.forEach(driver => {
+    const points = calculateTotalPoints(driver.racePoints, selectedRaces);
+    if (!teamPoints[driver.team]) {
+      teamPoints[driver.team] = 0;
+    }
+    teamPoints[driver.team] += points;
+  });
+  
+  return Object.entries(teamPoints)
+    .map(([team, points]) => ({ 
+      name: team, 
+      points,
+      fill: TEAM_COLORS[team] || '#e10600'
+    }))
+    .sort((a, b) => b.points - a.points);
+};
+
 const DriverComparison = ({ drivers }) => {
-  const [selectedDrivers, setSelectedDrivers] = useState([]);
+  const { language } = useLanguage();
+  const [viewMode, setViewMode] = useState('drivers'); // 'drivers' or 'teams'
+  const [selectedRaces, setSelectedRaces] = useState([]);
+  
+  // Initialize with all races selected
+  useEffect(() => {
+    if (drivers.length > 0) {
+      const maxRaces = Math.max(...drivers.map(d => d.racePoints.length));
+      setSelectedRaces(Array.from({ length: maxRaces }, (_, i) => i + 1));
+    }
+  }, [drivers]);
 
-  if (!drivers || drivers.length === 0) {
-    return (
-      <ComparisonContainer>
-        <Title>Driver Comparison</Title>
-        <NoDataMessage>No driver data available for comparison.</NoDataMessage>
-      </ComparisonContainer>
-    );
-  }
-
-  const handleDriverToggle = (driverId) => {
-    setSelectedDrivers(prev => {
-      if (prev.includes(driverId)) {
-        return prev.filter(id => id !== driverId);
-      } else if (prev.length < 3) {
-        return [...prev, driverId];
+  const handleRaceToggle = (raceNumber) => {
+    setSelectedRaces(prev => {
+      if (prev.includes(raceNumber)) {
+        return prev.filter(r => r !== raceNumber);
+      } else {
+        return [...prev, raceNumber].sort((a, b) => a - b);
       }
-      return prev;
     });
   };
 
-  const selectedDriverData = drivers.filter(driver => selectedDrivers.includes(driver.id || driver.name));
+  const handleSelectAllRaces = () => {
+    if (drivers.length > 0) {
+      const maxRaces = Math.max(...drivers.map(d => d.racePoints.length));
+      setSelectedRaces(Array.from({ length: maxRaces }, (_, i) => i + 1));
+    }
+  };
 
-  const pointsComparisonData = selectedDriverData.map(driver => ({
-    name: driver.name,
-    points: driver.points,
-    wins: driver.wins,
-    podiums: driver.podiums
-  }));
+  const handleDeselectAllRaces = () => {
+    setSelectedRaces([]);
+  };
 
-  const radarData = selectedDriverData.map(driver => ({
-    subject: driver.name,
-    Points: driver.points,
-    Wins: driver.wins * 10, // Scale for better visualization
-    Podiums: driver.podiums * 5,
-    'Pole Positions': driver.polePositions * 8,
-    'Fastest Laps': driver.fastestLaps * 6
-  }));
+  const chartData = viewMode === 'drivers' 
+    ? buildDriverChartData(drivers, selectedRaces)
+    : buildTeamChartData(drivers, selectedRaces);
 
-  const colors = ['#e10600', '#00d4aa', '#ff6b35'];
+  const maxRaces = drivers.length > 0 ? Math.max(...drivers.map(d => d.racePoints.length)) : 0;
 
   return (
     <ComparisonContainer>
-      <Title>Driver Comparison</Title>
+      <Title>{getTranslation('pointsComparison', language)}</Title>
       
-      <DriverSelector>
-        {drivers.map((driver, index) => (
-          <DriverButton
-            key={driver.id || index}
-            selected={selectedDrivers.includes(driver.id || driver.name)}
-            onClick={() => handleDriverToggle(driver.id || driver.name)}
+      <ControlsContainer>
+        <ControlRow>
+          <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.9rem' }}>{getTranslation('view', language)}:</span>
+          <ToggleButton
+            selected={viewMode === 'drivers'}
+            onClick={() => setViewMode('drivers')}
           >
-            {driver.name}
-          </DriverButton>
-        ))}
-      </DriverSelector>
+            {getTranslation('drivers', language)}
+          </ToggleButton>
+          <ToggleButton
+            selected={viewMode === 'teams'}
+            onClick={() => setViewMode('teams')}
+          >
+            {getTranslation('teams', language)}
+          </ToggleButton>
+        </ControlRow>
 
-      {selectedDriverData.length > 0 && (
-        <>
-          <ChartContainer>
-            <Title>Points Comparison</Title>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={pointsComparisonData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="rgba(255, 255, 255, 0.7)"
-                  fontSize={12}
+        <div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '10px' 
+          }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.9rem' }}>
+              {getTranslation('racesToInclude', language)} ({selectedRaces.length}/{maxRaces}):
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <ToggleButton
+                selected={false}
+                onClick={handleSelectAllRaces}
+                style={{ fontSize: '0.8rem', padding: '4px 8px' }}
+              >
+                {getTranslation('selectAll', language)}
+              </ToggleButton>
+              <ToggleButton
+                selected={false}
+                onClick={handleDeselectAllRaces}
+                style={{ fontSize: '0.8rem', padding: '4px 8px' }}
+              >
+                {getTranslation('deselectAll', language)}
+              </ToggleButton>
+            </div>
+          </div>
+          <RaceSelector>
+            {Array.from({ length: maxRaces }, (_, i) => i + 1).map(raceNumber => (
+              <RaceCheckbox key={raceNumber}>
+                <input
+                  type="checkbox"
+                  checked={selectedRaces.includes(raceNumber)}
+                  onChange={() => handleRaceToggle(raceNumber)}
                 />
-                <YAxis 
-                  stroke="rgba(255, 255, 255, 0.7)"
-                  fontSize={12}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '8px',
-                    color: '#ffffff'
-                  }}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="points" stroke="#e10600" strokeWidth={3} />
-                <Line type="monotone" dataKey="wins" stroke="#00d4aa" strokeWidth={3} />
-                <Line type="monotone" dataKey="podiums" stroke="#ff6b35" strokeWidth={3} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-
-          <ChartContainer>
-            <Title>Performance Radar Chart</Title>
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="rgba(255, 255, 255, 0.2)" />
-                <PolarAngleAxis 
-                  dataKey="subject" 
-                  tick={{ fill: 'rgba(255, 255, 255, 0.8)', fontSize: 12 }}
-                />
-                <PolarRadiusAxis 
-                  tick={{ fill: 'rgba(255, 255, 255, 0.6)', fontSize: 10 }}
-                />
-                <Radar 
-                  name="Performance" 
-                  dataKey="Points" 
-                  stroke={colors[0]} 
-                  fill={colors[0]} 
-                  fillOpacity={0.3} 
-                />
-                <Radar 
-                  name="Performance" 
-                  dataKey="Wins" 
-                  stroke={colors[1]} 
-                  fill={colors[1]} 
-                  fillOpacity={0.3} 
-                />
-                <Radar 
-                  name="Performance" 
-                  dataKey="Podiums" 
-                  stroke={colors[2]} 
-                  fill={colors[2]} 
-                  fillOpacity={0.3} 
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '8px',
-                    color: '#ffffff'
-                  }}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-
-          <ComparisonTable>
-            <Title>Detailed Comparison</Title>
-            <TableHeader>
-              <div>Driver</div>
-              <div>Points</div>
-              <div>Wins</div>
-              <div>Podiums</div>
-              <div>Pole Positions</div>
-              <div>Fastest Laps</div>
-            </TableHeader>
-            {selectedDriverData.map((driver, index) => (
-              <TableRow key={driver.id || index}>
-                <TableCell highlight>{driver.name}</TableCell>
-                <TableCell>{driver.points}</TableCell>
-                <TableCell>{driver.wins}</TableCell>
-                <TableCell>{driver.podiums}</TableCell>
-                <TableCell>{driver.polePositions}</TableCell>
-                <TableCell>{driver.fastestLaps}</TableCell>
-              </TableRow>
+                {getTranslation('race', language)} {raceNumber}
+              </RaceCheckbox>
             ))}
-          </ComparisonTable>
-        </>
-      )}
+          </RaceSelector>
+        </div>
+      </ControlsContainer>
 
-      {selectedDriverData.length === 0 && (
-        <NoDataMessage>
-          Select up to 3 drivers to compare their statistics.
-        </NoDataMessage>
+      {chartData.length > 0 ? (
+        <ChartContainer>
+          <Title>
+            {viewMode === 'drivers' 
+              ? getTranslation('driverPointsAcrossRaces', language) 
+              : getTranslation('teamPointsAcrossRaces', language)
+            }
+          </Title>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                textAnchor="end" 
+                height={80}
+                tick={{ fill: 'rgba(255, 255, 255, 0.8)', fontSize: 12 }}
+                axisLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
+                tickLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
+                label={{ 
+                  value: getTranslation('drivers', language), 
+                  position: 'bottom', 
+                  offset: 0,
+                  fill: 'rgba(255, 255, 255, 0.8)', 
+                  fontSize: 14 
+                }}
+              />
+              <YAxis 
+                tick={{ fill: 'rgba(255, 255, 255, 0.8)' }}
+                axisLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
+                tickLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
+                label={{ 
+                  value: getTranslation('points', language), 
+                  angle: -90, 
+                  position: 'insideLeft', 
+                  fill: 'rgba(255, 255, 255, 0.8)', 
+                  fontSize: 14 
+                }}
+              />
+              <Tooltip 
+                contentStyle={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  color: 'white'
+                }}
+                formatter={(value, name) => [value, getTranslation('points', language)]}
+              />
+              <Bar dataKey="points" fill="#e10600" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartContainer>
+      ) : (
+        <NoDataMessage>No data available for the selected races.</NoDataMessage>
       )}
     </ComparisonContainer>
   );
